@@ -1,7 +1,6 @@
 import psycopg2
 
 # --- 데이터베이스 연결 정보 ---
-# ※ 환경에 따라 db_host는 "localhost" 등으로 변경될 수 있습니다.
 db_host = "db_postgresql" 
 db_port = "5432"
 db_name = "main_db"
@@ -31,7 +30,6 @@ CREATE TABLE IF NOT EXISTS students (
 sql_insert = """
 INSERT INTO students (name, age) VALUES (%s, %s);
 """
-
 # 3. 문제 3: SELECT 쿼리 정의
 sql_select_all = "SELECT id, name, age FROM students;" 
 sql_select_age_22_or_more = "SELECT id, name, age FROM students WHERE age >= 22;"
@@ -62,15 +60,45 @@ try:
     conn.autocommit = False
 
     with conn.cursor() as cursor :
+        # ----------------------------------------------------------------
         # --- 문제 1 & 2: 테이블 생성 및 데이터 삽입 ---
-        print("\n[문제 1 & 2] 테이블 생성 및 데이터 삽입을 시작합니다.")
+        print("\n[문제 1 & 2] 테이블 생성 및 초기 데이터 삽입을 시작합니다.")
         cursor.execute(sql_enable_uuid_extension)
         cursor.execute(sql_create_table)
         for name, age in new_students:
             cursor.execute(sql_insert, (name, age))
         print(f"✅ 'students' 테이블 준비 및 테스트 데이터 {len(new_students)}건 삽입 완료.")
         
-        # --- 문제 4: UPDATE 연습 ---
+        # ----------------------------------------------------------------
+        # --- 📌 문제 3: READ (SELECT) 기본 조회 (초기 데이터 상태) ---
+        print("\n[문제 3] SELECT 쿼리 결과를 확인합니다 (초기 데이터 상태).")
+        
+        # 3-1. 전체 데이터 조회
+        print("\n--- 3-1. 전체 데이터 조회 (3건 예상) ---")
+        cursor.execute(sql_select_all)
+        records = cursor.fetchall()
+        print(f"총 {len(records)}건 조회:")
+        for r in records:
+            print(f'이름: {r[1]}, 나이: {r[2]}')
+
+        # 3-2. 나이가 22세 이상인 학생만 조회 (홍길동 23, 박철수 26 예상)
+        print("\n--- 3-2. 나이가 22세 이상인 학생만 조회 ---")
+        cursor.execute(sql_select_age_22_or_more)
+        records = cursor.fetchall()
+        print(f"총 {len(records)}건 조회:")
+        for r in records:
+            print(f'이름: {r[1]}, 나이: {r[2]}')
+
+        # 3-3. name 이 "홍길동"인 학생만 조회
+        print("\n--- 3-3. 이름이 '홍길동'인 학생만 조회 ---")
+        cursor.execute(sql_select_name_hong)
+        records = cursor.fetchall()
+        print(f"총 {len(records)}건 조회:")
+        for r in records:
+            print(f'이름: {r[1]}, 나이: {r[2]}')
+        
+        # ----------------------------------------------------------------
+        # --- 📌 문제 4: UPDATE 연습 ---
         cursor.execute(sql_select_update_id)
         update_record = cursor.fetchone() 
         if update_record:
@@ -78,7 +106,7 @@ try:
             cursor.execute(sql_update_age, (25, update_uuid))
             print(f"\n[문제 4] UPDATE 완료: '이영희' 학생의 나이를 25세로 수정했습니다.")
         
-        # --- 문제 5: DELETE 연습 ---
+        # --- 📌 문제 5: DELETE 연습 ---
         cursor.execute(sql_select_delete_id)
         delete_record = cursor.fetchone() 
         if delete_record:
@@ -86,16 +114,15 @@ try:
             cursor.execute(sql_delete_student, (delete_uuid,))
             print(f"[문제 5] DELETE 완료: '박철수' 학생 데이터를 삭제했습니다.")
         
-        # --- 문제 3: SELECT 쿼리 실행 (최종 확인) ---
-        print("\n[문제 3] 최종 SELECT 쿼리 결과를 확인합니다.")
-        
-        print("\n--- 3-1. 전체 데이터 조회 ---")
+        # ----------------------------------------------------------------
+        # --- 최종 확인: UPDATE/DELETE 결과 반영 여부 확인 ---
+        print("\n[최종 확인] UPDATE/DELETE 작업 후 전체 데이터를 다시 조회합니다.")
         cursor.execute(sql_select_all)
         records = cursor.fetchall()
-        print(f"총 {len(records)}건 조회 (박철수 삭제됨):")
+        print(f"총 {len(records)}건 조회 (박철수 삭제, 이영희 나이 25 확인):")
         for r in records:
-            print(f'ID: {str(r[0])[:8]}..., 이름: {r[1]}, 나이: {r[2]}')
-
+            print(f'이름: {r[1]}, 나이: {r[2]}')
+        
     # 모든 변경 사항을 데이터베이스에 확정합니다.
     conn.commit()
     print("\n데이터베이스 변경 사항이 커밋되었습니다.")
@@ -107,6 +134,7 @@ except psycopg2.Error as e:
     print(f"\n❌ 데이터베이스 오류가 발생했습니다: {e}")
 
 finally:
+    # 연결을 닫습니다.
     if conn:
         conn.close()
         print("PostgreSQL 연결이 종료되었습니다.")
