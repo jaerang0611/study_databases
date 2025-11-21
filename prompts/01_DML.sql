@@ -31,10 +31,8 @@ CREATE TABLE books (
 
 SELECT * FROM books;
 
--- 1. 첫 번째 INSERT (book_id = 1)
 INSERT INTO books (book_id, title, price)
 VALUES (1, '책 A', 10000);
 
--- 2. 두 번째 INSERT (book_id를 2로 변경하여 중복 회피)
 INSERT INTO books (book_id, title, price)
 VALUES (2, '책 B', 15000);
