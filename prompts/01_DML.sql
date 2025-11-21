@@ -1,3 +1,7 @@
+```
+아래 문제에 대한 PostgreSQL 쿼리문을 만들어 줘.
+```
+
 CREATE TABLE students (
     id INT PRIMARY KEY,
     name VARCHAR(50),
