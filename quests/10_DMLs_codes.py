@@ -1,160 +1,342 @@
 import psycopg2
+import sys
+from typing import List, Tuple, Any, Optional
 
-# --- 데이터베이스 연결 정보 ---
-db_host = "db_postgresql" 
-db_port = "5432"
-db_name = "main_db"
-db_user = "admin"
-db_password = "admin123"
+# PostgreSQL 연결 설정 (Common Configuration)
+DB_HOST = "db_postgresql"
+DB_PORT = "5432"
+DB_NAME = "main_db"
+DB_USER = "admin"
+DB_PASSWORD = "admin123"
 
-# --- 문제 2: 삽입할 데이터 ---
-new_students = [
-    ('홍길동', 23),
-    ('이영희', 21),
-    ('박철수', 26)
+# 테스트용 삽입 데이터 (요구사항에 명시된 데이터만 사용)
+TEST_BOOK_DATA = [
+    ["파이썬 입문", 19000],
+    ["알고리즘 기초", 25000],
+    ["네트워크 이해", 30000]
 ]
 
-# --- SQL 문 정의 ---
-# 1. 문제 1: 테이블 생성
-sql_enable_uuid_extension = """
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-"""
-sql_create_table = """
-CREATE TABLE IF NOT EXISTS students ( 
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(50),  
-    age INT
-);
-"""
-# 2. 문제 2: 데이터 삽입
-sql_insert = """
-INSERT INTO students (name, age) VALUES (%s, %s);
-"""
-# 3. 문제 3: SELECT 쿼리 정의
-sql_select_all = "SELECT id, name, age FROM students;" 
-sql_select_age_22_or_more = "SELECT id, name, age FROM students WHERE age >= 22;"
-sql_select_name_hong = "SELECT id, name, age FROM students WHERE name = '홍길동';"
+def get_connection():
+    """데이터베이스 연결 객체를 생성하고 반환합니다."""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        return conn
+    except psycopg2.Error as e:
+        print(f"데이터베이스 연결 오류: {e}", file=sys.stderr)
+        return None
 
-# 4. 문제 4: UPDATE 관련 쿼리 정의
-sql_select_update_id = "SELECT id FROM students WHERE name = '이영희';"
-sql_update_age = "UPDATE students SET age = %s WHERE id = %s;"
+def print_books_results(results: List[Tuple]) -> None:
+    """
+    조회 결과를 보기 좋게 출력하는 헬퍼 함수입니다.
+    UUID는 문자열로 변환한 후 앞 8자리만 슬라이싱하여 출력합니다.
+    """
+    if not results:
+        print("  |-- (결과 없음) --|")
+        return
 
-# 5. 문제 5: DELETE 관련 쿼리 정의
-sql_select_delete_id = "SELECT id FROM students WHERE name = '박철수';"
-sql_delete_student = "DELETE FROM students WHERE id = %s;"
+    # 헤더 출력
+    header = ["UUID (8자리)", "Title", "Price"]
+    print("-" * 50)
+    print(f"| {header[0]:<12} | {header[1]:<15} | {header[2]:<8} |")
+    print("-" * 50)
 
-
-conn = None 
-
-try:
-    # 1. PostgreSQL 데이터베이스에 연결합니다.
-    conn = psycopg2.connect(
-        host=db_host,
-        port=db_port,
-        dbname=db_name,
-        user=db_user,
-        password=db_password
-    )
-    print("PostgreSQL 데이터베이스에 성공적으로 연결되었습니다.")
-
-    conn.autocommit = False
-
-    with conn.cursor() as cursor :
-        # ----------------------------------------------------------------
-        # --- 문제 1 & 2: 테이블 생성 및 데이터 삽입 ---
-        print("\n[문제 1 & 2] 테이블 생성 및 초기 데이터 삽입을 시작합니다.")
-        cursor.execute(sql_enable_uuid_extension)
-        cursor.execute(sql_create_table)
-        for name, age in new_students:
-            cursor.execute(sql_insert, (name, age))
-        print(f"✅ 'students' 테이블 준비 및 테스트 데이터 {len(new_students)}건 삽입 완료.")
+    # 데이터 출력
+    for row in results:
+        # row: (id: UUID, title: str, price: int)
+        book_id_str = str(row[0]) # UUID 객체를 문자열로 변환
+        short_id = book_id_str[:8] # 앞 8자리 슬라이싱
+        title = row[1]
+        price = row[2]
         
-        # ----------------------------------------------------------------
-        # --- 📌 문제 3: READ (SELECT) 기본 조회 (초기 데이터 상태) ---
-        print("\n[문제 3] SELECT 쿼리 결과를 확인합니다 (초기 데이터 상태).")
-        
-        # 3-1. 전체 데이터 조회
-        print("\n--- 3-1. 전체 데이터 조회 (3건 예상) ---")
-        cursor.execute(sql_select_all)
-        records = cursor.fetchall()
-        print(f"총 {len(records)}건 조회:")
-        for r in records:
-            print(f'이름: {r[1]}, 나이: {r[2]}')
+        # 형식에 맞게 출력
+        print(f"| {short_id:<12} | {title:<15} | {price:8,} |")
+    
+    print("-" * 50)
 
-        # 3-2. 나이가 22세 이상인 학생만 조회 (홍길동 23, 박철수 26 예상)
-        print("\n--- 3-2. 나이가 22세 이상인 학생만 조회 ---")
-        cursor.execute(sql_select_age_22_or_more)
-        records = cursor.fetchall()
-        print(f"총 {len(records)}건 조회:")
-        for r in records:
-            print(f'이름: {r[1]}, 나이: {r[2]}')
+# ----------------------------------------------------------------------
+# 문제 1: 테이블 생성 (CREATE)
+# ----------------------------------------------------------------------
 
-        # 3-3. name 이 "홍길동"인 학생만 조회
-        print("\n--- 3-3. 이름이 '홍길동'인 학생만 조회 ---")
-        cursor.execute(sql_select_name_hong)
-        records = cursor.fetchall()
-        print(f"총 {len(records)}건 조회:")
-        for r in records:
-            print(f'이름: {r[1]}, 나이: {r[2]}')
-        
-        # ----------------------------------------------------------------
-        # --- 📌 문제 4: UPDATE 연습 ---
-        cursor.execute(sql_select_update_id)
-        update_record = cursor.fetchone() 
-        if update_record:
-            update_uuid = update_record[0]
-            cursor.execute(sql_update_age, (25, update_uuid))
-            print(f"\n[문제 4] UPDATE 완료: '이영희' 학생의 나이를 25세로 수정했습니다.")
-        
-        # --- 📌 문제 5: DELETE 연습 ---
-        cursor.execute(sql_select_delete_id)
-        delete_record = cursor.fetchone() 
-        if delete_record:
-            delete_uuid = delete_record[0]
-            cursor.execute(sql_delete_student, (delete_uuid,))
-            print(f"[문제 5] DELETE 완료: '박철수' 학생 데이터를 삭제했습니다.")
-        
-        # ----------------------------------------------------------------
-        # --- 최종 확인: UPDATE/DELETE 결과 반영 여부 확인 ---
-        print("\n[최종 확인] UPDATE/DELETE 작업 후 전체 데이터를 다시 조회합니다.")
-        cursor.execute(sql_select_all)
-        records = cursor.fetchall()
-        print(f"총 {len(records)}건 조회 (박철수 삭제, 이영희 나이 25 확인):")
-        for r in records:
-            print(f'이름: {r[1]}, 나이: {r[2]}')
-        
-    # 모든 변경 사항을 데이터베이스에 확정합니다.
-    conn.commit()
-    print("\n데이터베이스 변경 사항이 커밋되었습니다.")
+def create_books_table():
+    """
+    UUID 생성을 위한 'uuid-ossp' 확장 생성 및 'books' 테이블을 생성합니다.
+    id: UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+    title: VARCHAR(100)
+    price: INT
+    """
+    conn = get_connection()
+    if conn is None:
+        return
 
-except psycopg2.Error as e:
-    # 오류 발생 시 롤백 및 오류 메시지 출력
-    if conn:
+    try:
+        with conn.cursor() as cur:
+            # 1. UUID 생성을 위해 'uuid-ossp' 확장을 먼저 생성합니다. (IF NOT EXISTS 사용)
+            cur.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
+            
+            # 2. books 테이블 생성
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS books (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    title VARCHAR(100) NOT NULL,
+                    price INT NOT NULL
+                );
+            """)
+            conn.commit()
+            print("=> [문제 1] books 테이블이 생성되었습니다.")
+    except psycopg2.Error as e:
+        print(f"테이블 생성 오류: {e}", file=sys.stderr)
         conn.rollback()
-    print(f"\n❌ 데이터베이스 오류가 발생했습니다: {e}")
-
-finally:
-    # 연결을 닫습니다.
-    if conn:
+    finally:
         conn.close()
-        print("PostgreSQL 연결이 종료되었습니다.")
+
+# ----------------------------------------------------------------------
+# 문제 2: 대량 데이터 삽입 (INSERT)
+# ----------------------------------------------------------------------
+
+def insert_books(books_data: List[List[Any]]) -> None:
+    """
+    다수의 책 데이터를 executemany를 사용하여 효율적이고 안전하게 삽입합니다.
+    id는 자동 생성됩니다.
+    """
+    conn = get_connection()
+    if conn is None:
+        return
+
+    # SQL: id는 제외하고 title, price만 삽입
+    sql = "INSERT INTO books (title, price) VALUES (%s, %s);"
     
-    # ----------------------------------------------------------------
-    # --- 📌 문제 6: PRIMARY KEY 이해 문제 해설 출력 ---
-    print("\n=======================================================")
-    print("📌 [문제 6] PRIMARY KEY 이해 문제 해설")
-    print("=======================================================")
+    try:
+        with conn.cursor() as cur:
+            # executemany를 사용하여 일괄 삽입
+            cur.executemany(sql, books_data)
+            count = cur.rowcount
+            conn.commit()
+            print(f"=> [문제 2] {count}개 도서가 삽입되었습니다.")
+    except psycopg2.Error as e:
+        print(f"데이터 삽입 오류: {e}", file=sys.stderr)
+        conn.rollback()
+    finally:
+        conn.close()
+
+# ----------------------------------------------------------------------
+# 문제 3: 데이터 조회 (READ)
+# ----------------------------------------------------------------------
+
+def get_all_books() -> List[Tuple]:
+    """전체 도서 데이터를 조회합니다."""
+    conn = get_connection()
+    if conn is None:
+        return []
+
+    results = []
+    sql = "SELECT id, title, price FROM books ORDER BY price DESC;"
     
-    print("1. 🛑 어떤 에러가 발생하는가?")
-    print("   -> 에러 유형: duplicate key value violates unique constraint와 같은 에러가 발생합니다.")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            results = cur.fetchall()
+            print(f"=> [문제 3-1] 전체 도서 {len(results)}권을 조회했습니다.")
+            print_books_results(results)
+    except psycopg2.Error as e:
+        print(f"전체 조회 오류: {e}", file=sys.stderr)
+    finally:
+        conn.close()
+    return results
+
+def get_expensive_books() -> List[Tuple]:
+    """가격이 25000원 이상인 도서를 조회합니다."""
+    conn = get_connection()
+    if conn is None:
+        return []
+
+    results = []
+    # 매개변수화된 쿼리를 사용하여 가격 조건 명시
+    sql = "SELECT id, title, price FROM books WHERE price >= %s ORDER BY price DESC;"
     
-    print("\n2. 🤯 왜 발생하는가?")
-    print("   -> 첫 번째 INSERT는 book_id에 '1'을 할당하며 성공합니다.")
-    print("   -> 두 번째 INSERT는 이미 존재하는 동일한 book_id 값 '1'을 다시 삽입하려고 시도합니다.")
-    print("   -> PRIMARY KEY는 값의 고유성(Uniqueness)을 강제하므로, 중복된 키 값 '1'을 허용하지 않아 에러가 발생합니다.")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (25000,)) # 튜플 형태로 전달
+            results = cur.fetchall()
+            print(f"=> [문제 3-2] 가격이 25000원 이상인 도서 {len(results)}권을 조회했습니다.")
+            print_books_results(results)
+    except psycopg2.Error as e:
+        print(f"고가 도서 조회 오류: {e}", file=sys.stderr)
+    finally:
+        conn.close()
+    return results
+
+def get_book_by_title(title: str) -> List[Tuple]:
+    """title이 일치하는 도서를 조회합니다."""
+    conn = get_connection()
+    if conn is None:
+        return []
+
+    results = []
+    # 매개변수화된 쿼리 사용
+    sql = "SELECT id, title, price FROM books WHERE title = %s;"
     
-    print("\n3. 📜 PRIMARY KEY 의 규칙")
-    print("   * 고유성 (Uniqueness): PRIMARY KEY 값은 테이블 전체에서 중복될 수 없습니다.")
-    print("   * NOT NULL: PRIMARY KEY 컬럼에 NULL 값을 허용하지 않습니다. 반드시 값을 가져야 합니다.")
-    print("   * 단일성: 테이블당 오직 하나의 PRIMARY KEY만 정의할 수 있습니다.")
-    print("=======================================================")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (title,))
+            results = cur.fetchall()
+            print(f"=> [문제 3-3] 제목이 '{title}'인 도서 {len(results)}권을 조회했습니다.")
+            print_books_results(results)
+    except psycopg2.Error as e:
+        print(f"제목으로 도서 조회 오류: {e}", file=sys.stderr)
+    finally:
+        conn.close()
+    return results
+
+# ----------------------------------------------------------------------
+# 문제 4: 데이터 갱신 (UPDATE)
+# ----------------------------------------------------------------------
+
+def update_second_book_price(new_price: int = 27000) -> None:
+    """
+    저장된 순서에서 두 번째 도서의 가격을 갱신합니다.
+    UUID를 먼저 가져온 후 해당 ID로 업데이트를 수행합니다.
+    """
+    conn = get_connection()
+    if conn is None:
+        return
+
+    # 1. 두 번째 도서의 ID를 가져옵니다. (ORDER BY는 명시되지 않았으므로 임의의 순서로 가져옴)
+    # 안전성을 위해 title로 ORDER BY를 사용하겠습니다.
+    select_id_sql = "SELECT id FROM books ORDER BY title ASC LIMIT 1 OFFSET 1;"
+    
+    try:
+        with conn.cursor() as cur:
+            # ID 조회
+            cur.execute(select_id_sql)
+            book_id_result = cur.fetchone()
+            
+            if book_id_result:
+                target_id = book_id_result[0]
+                
+                # 2. 해당 ID를 사용하여 가격 갱신 (매개변수화된 쿼리 사용)
+                update_sql = "UPDATE books SET price = %s WHERE id = %s;"
+                cur.execute(update_sql, (new_price, target_id))
+                
+                conn.commit()
+                if cur.rowcount > 0:
+                    print(f"=> [문제 4] 두 번째 도서 (ID: {str(target_id)[:8]}...) 가격이 {new_price:,}으로 수정되었습니다.")
+                else:
+                    print("=> [문제 4] 업데이트 대상 도서를 찾지 못했습니다.", file=sys.stderr)
+            else:
+                print("=> [문제 4] 업데이트할 두 번째 도서를 찾지 못했습니다.", file=sys.stderr)
+                
+    except psycopg2.Error as e:
+        print(f"데이터 갱신 오류: {e}", file=sys.stderr)
+        conn.rollback()
+    finally:
+        conn.close()
+
+# ----------------------------------------------------------------------
+# 문제 5: 데이터 삭제 (DELETE)
+# ----------------------------------------------------------------------
+
+def delete_third_book() -> None:
+    """
+    저장된 순서에서 세 번째 도서 데이터를 삭제합니다.
+    UUID를 먼저 가져온 후 해당 ID로 삭제를 수행합니다.
+    """
+    conn = get_connection()
+    if conn is None:
+        return
+
+    # 1. 세 번째 도서의 ID를 가져옵니다. (ORDER BY는 명시되지 않았으므로 임의의 순서로 가져옴)
+    # 안전성을 위해 title로 ORDER BY를 사용하겠습니다.
+    select_id_sql = "SELECT id FROM books ORDER BY title ASC LIMIT 1 OFFSET 2;"
+    
+    try:
+        with conn.cursor() as cur:
+            # ID 조회
+            cur.execute(select_id_sql)
+            book_id_result = cur.fetchone()
+            
+            if book_id_result:
+                target_id = book_id_result[0]
+                
+                # 2. 해당 ID를 사용하여 삭제 (매개변수화된 쿼리 사용)
+                delete_sql = "DELETE FROM books WHERE id = %s;"
+                cur.execute(delete_sql, (target_id,))
+                
+                conn.commit()
+                if cur.rowcount > 0:
+                    print(f"=> [문제 5] 세 번째 도서 (ID: {str(target_id)[:8]}...) 가 삭제되었습니다.")
+                else:
+                    print("=> [문제 5] 삭제 대상 도서를 찾지 못했습니다.", file=sys.stderr)
+            else:
+                print("=> [문제 5] 삭제할 세 번째 도서를 찾지 못했습니다.", file=sys.stderr)
+                
+    except psycopg2.Error as e:
+        print(f"데이터 삭제 오류: {e}", file=sys.stderr)
+        conn.rollback()
+    finally:
+        conn.close()
+
+# ----------------------------------------------------------------------
+# 메인 실행 엔트리 포인트 (Execution Entry Point)
+# ----------------------------------------------------------------------
+
+def main():
+    """모든 함수를 순서대로 호출하여 기능을 테스트합니다."""
+    
+    print("=============================================")
+    print("   PostgreSQL Books CRUD 기능 테스트 시작")
+    print("=============================================")
+    
+    # [1] 테이블 생성
+    create_books_table()
+    
+    # 테이블이 이미 존재할 경우, 테스트를 위해 기존 데이터를 정리합니다.
+    # 이 부분은 명시된 요구사항은 아니지만, 반복 테스트의 일관성을 위해 추가합니다.
+    conn = get_connection()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("TRUNCATE books RESTART IDENTITY;")
+                conn.commit()
+                print("=> [준비] 기존 데이터베이스 'books' 테이블의 내용을 모두 비웠습니다.")
+        except psycopg2.Error as e:
+            print(f"[정리 오류] {e}", file=sys.stderr)
+        finally:
+            conn.close()
+            
+    print("\n--- [초기 삽입] ---")
+    # [2] 대량 데이터 삽입
+    insert_books(TEST_BOOK_DATA)
+
+    print("\n--- [초기 데이터 조회 (CRUD: R)] ---")
+    # [3-1] 전체 조회 (초기 데이터 확인)
+    get_all_books()
+    
+    # [3-2] 가격 조건 조회
+    get_expensive_books()
+    
+    # [3-3] 제목 조건 조회 (테스트 데이터 중 하나 사용)
+    get_book_by_title("알고리즘 기초")
+    
+    print("\n--- [데이터 갱신 및 삭제 (CRUD: U, D)] ---")
+    # [4] 두 번째 도서 가격 갱신 (UPDATE)
+    update_second_book_price(27000)
+
+    # [5] 세 번째 도서 삭제 (DELETE)
+    delete_third_book()
+
+    print("\n--- [최종 결과 조회] ---")
+    # [3-1] 전체 조회 (최종 결과 확인)
+    get_all_books()
+
+    print("\n=============================================")
+    print("   PostgreSQL Books CRUD 기능 테스트 완료")
+    print("=============================================")
+
+if __name__ == '__main__':
+    main()
